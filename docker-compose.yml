@@ -1,0 +1,54 @@
+# Optional convenience compose file. The Python AI service builds a Chroma
+# index at startup that can take a while and needs live internet access
+# (Google/Tavily/HF/GitHub) -- for iterating on the agent itself, running it
+# directly with `uvicorn` (see README) is usually faster than rebuilding
+# this image on every change.
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  ai-service:
+    build: ./ai-service
+    restart: unless-stopped
+    env_file: ./ai-service/.env
+    environment:
+      - ALLOWED_ORIGINS=http://server:5000,http://localhost:5000
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/app/chroma_factors_db
+
+  server:
+    build: ./server
+    restart: unless-stopped
+    env_file: ./server/.env
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017/research_assistant
+      - AI_SERVICE_URL=http://ai-service:8000
+      - CLIENT_ORIGIN=http://localhost:5173
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongo
+      - ai-service
+
+  client:
+    build: ./client
+    restart: unless-stopped
+    environment:
+      - VITE_API_BASE_URL=http://localhost:5000/api
+    ports:
+      - "5173:5173"
+    depends_on:
+      - server
+
+volumes:
+  mongo_data:
+  chroma_data:

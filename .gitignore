@@ -1,0 +1,20 @@
+# Environment variables (NEVER push these!)
+.env
+.env.local
+
+# Node.js dependencies
+node_modules/
+dist/
+build/
+
+# Python dependencies & environments
+venv/
+__pycache__/
+*.pyc
+
+# Database and AI Storage
+chroma_factors_db/
+mongo_data/
+
+# OS Generated files
+.DS_Store

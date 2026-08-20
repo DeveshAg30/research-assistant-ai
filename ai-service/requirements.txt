@@ -1,0 +1,30 @@
+# --- Core LangChain ---
+langchain>=1.0.0
+langchain-core>=1.0.0
+langchain-community>=0.4.0
+langchain-classic>=1.0.0        # create_tool_calling_agent / AgentExecutor
+langchain-text-splitters>=1.0.0
+
+# --- Gemini (LLM + Embeddings) ---
+langchain-google-genai>=3.0.0   # ChatGoogleGenerativeAI + GoogleGenerativeAIEmbeddings
+
+# --- Vector store ---
+langchain-chroma>=0.2.0
+chromadb>=0.5.0
+
+# --- Data ingestion ---
+datasets>=2.20.0
+pandas>=2.0.0
+
+# --- Web search (called directly, not via a LangChain tool wrapper -- see agent_core.py) ---
+tavily-python>=0.5.0
+duckduckgo-search>=6.0.0        # no-API-key fallback if TAVILY_API_KEY is unset
+
+# --- Wikipedia lookup ---
+wikipedia>=1.4.0
+
+# --- API layer ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
