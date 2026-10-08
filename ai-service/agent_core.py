@@ -275,6 +275,16 @@ def build_web_search_tool():
 
 
 def build_wikipedia_tool():
+    import wikipedia
+
+    # Wikimedia returns 403 (non-JSON) for the `wikipedia` library's default
+    # User-Agent, which surfaces as a JSONDecodeError inside the tool.
+    wikipedia.set_user_agent(
+        os.environ.get(
+            "WIKIPEDIA_USER_AGENT",
+            "research-assistant-mern/1.0 (https://github.com/; fact-checking app)",
+        )
+    )
     api_wrapper = WikipediaAPIWrapper(top_k_results=2, doc_content_chars_max=2000)
     wiki_tool = WikipediaQueryRun(api_wrapper=api_wrapper)
     wiki_tool.description = (
@@ -284,6 +294,8 @@ def build_wikipedia_tool():
         "or to check whether something has changed; use internal_research_db "
         "and web_search for that instead."
     )
+    # Report lookup failures back to the agent instead of aborting the run.
+    wiki_tool.handle_tool_error = True
     return wiki_tool
 
 

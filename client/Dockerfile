@@ -9,6 +9,11 @@ COPY package*.json ./
 RUN npm install
 
 COPY . .
+
+# Vite inlines VITE_* variables into the bundle at build time, so the API
+# URL must be supplied as a build arg, not a runtime environment variable.
+ARG VITE_API_BASE_URL=http://localhost:5000/api
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 RUN npm run build
 
 EXPOSE 5173

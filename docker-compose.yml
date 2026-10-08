@@ -3,8 +3,6 @@
 # (Google/Tavily/HF/GitHub) -- for iterating on the agent itself, running it
 # directly with `uvicorn` (see README) is usually faster than rebuilding
 # this image on every change.
-version: "3.9"
-
 services:
   mongo:
     image: mongo:7
@@ -30,20 +28,24 @@ services:
     restart: unless-stopped
     env_file: ./server/.env
     environment:
+      - PORT=5000
       - MONGODB_URI=mongodb://mongo:27017/research_assistant
       - AI_SERVICE_URL=http://ai-service:8000
       - CLIENT_ORIGIN=http://localhost:5173
     ports:
-      - "5000:5000"
+      # Host port 5001: on macOS, AirPlay Receiver already listens on 5000.
+      - "5001:5000"
     depends_on:
       - mongo
       - ai-service
 
   client:
-    build: ./client
+    build:
+      context: ./client
+      args:
+        # Baked into the bundle at build time; set to your public API URL.
+        - VITE_API_BASE_URL=http://localhost:5001/api
     restart: unless-stopped
-    environment:
-      - VITE_API_BASE_URL=http://localhost:5000/api
     ports:
       - "5173:5173"
     depends_on:
