@@ -1,0 +1,51 @@
+# Render Blueprint: Dashboard -> New -> Blueprint -> pick this repo.
+# The React client is deployed separately on Vercel (see README).
+services:
+  # Python agent. A private service has no public URL -- only the Express
+  # server can reach it, over Render's private network.
+  - type: pserv
+    name: research-ai
+    runtime: docker
+    dockerfilePath: ./ai-service/Dockerfile
+    dockerContext: ./ai-service
+    # PyTorch + the embedding model need ~1-1.5 GB; 512 MB plans OOM.
+    plan: 1c-2g
+    disk:
+      name: chroma
+      mountPath: /app/chroma_factors_db
+      sizeGB: 1
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: MAX_INGEST_ROWS
+        value: "2000"
+      - key: CHROMA_PERSIST_DIR
+        value: /app/chroma_factors_db
+
+  # Express API, public. Free instances sleep after ~15 min idle
+  # (first request afterwards takes ~1 min to wake).
+  - type: web
+    name: research-server
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: AI_SERVICE_URL
+        fromService:
+          type: pserv
+          name: research-ai
+          property: hostport
+      - key: AI_SERVICE_TIMEOUT_MS
+        value: "120000"
+      # The Vercel URL of the client, e.g. https://research-assistant.vercel.app
+      - key: CLIENT_ORIGIN
+        sync: false

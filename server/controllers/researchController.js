@@ -3,7 +3,12 @@ const mongoose = require('mongoose');
 const asyncHandler = require('express-async-handler');
 const ResearchReport = require('../models/ResearchReport');
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+const RAW_AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+// Render's private-network reference (fromService.hostport) is a bare
+// "host:port", so default to http:// when no scheme is given.
+const AI_SERVICE_URL = /^https?:\/\//.test(RAW_AI_SERVICE_URL)
+  ? RAW_AI_SERVICE_URL
+  : `http://${RAW_AI_SERVICE_URL}`;
 // The agent can genuinely take a while (retrieval + possibly a live web
 // search + LLM synthesis), so give it a generous timeout rather than
 // failing fast on a slow-but-successful run.
