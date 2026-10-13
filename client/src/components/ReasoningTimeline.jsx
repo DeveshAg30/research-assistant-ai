@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, Database, Globe, BookOpen, Wrench } from 'lucide-react';
+import { ChevronDown, Database, Globe, BookOpen, Wrench, Loader2 } from 'lucide-react';
 
 const TOOL_META = {
   internal_research_db: { label: 'Internal Database', icon: Database, color: 'text-purple-600' },
@@ -21,6 +21,7 @@ function stepInputSummary(toolInput) {
 
 function AccordionItem({ step, index, isOpen, onToggle }) {
   const { label, icon: Icon, color } = toolMeta(step.tool);
+  const isRunning = step.observation === undefined;
 
   return (
     <div className="border border-slate-200 rounded-lg overflow-hidden">
@@ -37,10 +38,14 @@ function AccordionItem({ step, index, isOpen, onToggle }) {
             "{stepInputSummary(step.tool_input)}"
           </span>
         </span>
-        <ChevronDown
-          size={16}
-          className={`text-slate-400 transition-transform shrink-0 ${isOpen ? 'rotate-180' : ''}`}
-        />
+        {isRunning ? (
+          <Loader2 size={16} className="text-slate-400 animate-spin shrink-0" aria-label="Running" />
+        ) : (
+          <ChevronDown
+            size={16}
+            className={`text-slate-400 transition-transform shrink-0 ${isOpen ? 'rotate-180' : ''}`}
+          />
+        )}
       </button>
 
       {isOpen && (
@@ -58,7 +63,7 @@ function AccordionItem({ step, index, isOpen, onToggle }) {
               Tool result
             </p>
             <pre className="whitespace-pre-wrap break-words text-xs bg-slate-50 border border-slate-100 rounded p-2 max-h-64 overflow-auto text-slate-600 scroll-thin">
-              {step.observation}
+              {isRunning ? 'Waiting for the tool to respond…' : step.observation}
             </pre>
           </div>
         </div>
@@ -69,15 +74,16 @@ function AccordionItem({ step, index, isOpen, onToggle }) {
 
 /**
  * Displays the agent's decision-making flow (tool calls, thoughts, and raw
- * tool output) as a collapsible accordion / timeline.
+ * tool output) as a collapsible accordion / timeline. While a run is live,
+ * steps arrive one by one and a step without an observation is in progress.
  */
-export default function ReasoningTimeline({ steps = [] }) {
+export default function ReasoningTimeline({ steps = [], isLive = false }) {
   const [openIndex, setOpenIndex] = useState(steps.length > 0 ? 0 : null);
 
   if (!steps.length) {
     return (
       <p className="text-sm text-slate-400 italic">
-        No reasoning steps recorded for this query.
+        {isLive ? 'Planning the first step…' : 'No reasoning steps recorded for this query.'}
       </p>
     );
   }

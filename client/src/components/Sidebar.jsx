@@ -1,4 +1,4 @@
-import { Search, Star, Loader2 } from 'lucide-react';
+import { Search, Star, Loader2, Plus, LogOut } from 'lucide-react';
 import { VerificationPill } from './VerificationBadge';
 
 const FILTERS = [
@@ -6,6 +6,9 @@ const FILTERS = [
   { key: 'CONFIRMED', label: 'Confirmed' },
   { key: 'UPDATED', label: 'Updated' },
   { key: 'CONTRADICTED', label: 'Contradicted' },
+  { key: 'INTERNAL_ONLY', label: 'Internal only' },
+  { key: 'INSUFFICIENT', label: 'Insufficient' },
+  { key: 'FAILED', label: 'Failed' },
 ];
 
 function timeAgo(dateString) {
@@ -21,8 +24,11 @@ function timeAgo(dateString) {
 export default function Sidebar({
   history,
   isLoading,
+  loadError,
   activeFilter,
   onFilterChange,
+  bookmarkedOnly,
+  onBookmarkedOnlyChange,
   searchTerm,
   onSearchChange,
   selectedId,
@@ -31,11 +37,24 @@ export default function Sidebar({
   hasMore,
   onLoadMore,
   isLoadingMore,
+  onNewResearch,
+  user,
+  usage,
+  onLogout,
 }) {
   return (
     <aside className="w-80 shrink-0 border-r border-slate-200 bg-white h-full flex flex-col">
       <div className="p-4 border-b border-slate-200 space-y-3">
-        <h1 className="text-lg font-bold text-slate-800">Research Assistant</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-bold text-slate-800">Research Assistant</h1>
+          <button
+            type="button"
+            onClick={onNewResearch}
+            className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700"
+          >
+            <Plus size={13} /> New research
+          </button>
+        </div>
 
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -63,6 +82,18 @@ export default function Sidebar({
               {label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => onBookmarkedOnlyChange(!bookmarkedOnly)}
+            aria-pressed={bookmarkedOnly}
+            className={`inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1 border transition-colors ${
+              bookmarkedOnly
+                ? 'bg-amber-400 border-amber-400 text-white'
+                : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+            }`}
+          >
+            <Star size={11} className={bookmarkedOnly ? 'fill-current' : ''} /> Bookmarked
+          </button>
         </div>
       </div>
 
@@ -73,49 +104,48 @@ export default function Sidebar({
           </div>
         )}
 
-        {!isLoading && history.length === 0 && (
+        {!isLoading && loadError && (
+          <p className="text-sm text-red-600 text-center py-6 px-4" role="alert">
+            {loadError}
+          </p>
+        )}
+
+        {!isLoading && !loadError && history.length === 0 && (
           <p className="text-sm text-slate-400 text-center py-8 px-4">
-            No research queries yet. Ask something to get started.
+            {searchTerm || activeFilter !== 'ALL' || bookmarkedOnly
+              ? 'No research matches these filters.'
+              : 'No research queries yet. Ask something to get started.'}
           </p>
         )}
 
         <ul className="divide-y divide-slate-100">
           {history.map((item) => (
-            <li key={item._id}>
+            <li key={item._id} className="relative">
               <button
                 type="button"
                 onClick={() => onSelect(item._id)}
-                className={`w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors ${
+                className={`w-full text-left px-4 py-3 pr-10 hover:bg-slate-50 transition-colors ${
                   selectedId === item._id ? 'bg-brand-50' : ''
                 }`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-800 line-clamp-2 flex-1">
-                    {item.query}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleBookmark(item._id);
-                    }}
-                    className="shrink-0"
-                    aria-label="Toggle bookmark"
-                  >
-                    <Star
-                      size={15}
-                      className={
-                        item.is_bookmarked
-                          ? 'fill-amber-400 text-amber-400'
-                          : 'text-slate-300 hover:text-slate-400'
-                      }
-                    />
-                  </button>
-                </div>
+                <p className="text-sm font-medium text-slate-800 line-clamp-2">{item.query}</p>
                 <div className="flex items-center justify-between mt-2">
-                  <VerificationPill status={item.verification_status} />
+                  <VerificationPill status={item.verification_status} runStatus={item.status} />
                   <span className="text-xs text-slate-400">{timeAgo(item.createdAt)}</span>
                 </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => onToggleBookmark(item._id)}
+                className="absolute right-4 top-3"
+                aria-label={item.is_bookmarked ? 'Remove bookmark' : 'Bookmark'}
+              >
+                <Star
+                  size={15}
+                  className={
+                    item.is_bookmarked ? 'fill-amber-400 text-amber-400' : 'text-slate-300 hover:text-slate-400'
+                  }
+                />
               </button>
             </li>
           ))}
@@ -131,6 +161,25 @@ export default function Sidebar({
             {isLoadingMore ? 'Loading...' : 'Load more'}
           </button>
         )}
+      </div>
+
+      <div className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500 space-y-1">
+        {usage && (
+          <p>
+            <span className="tabular-nums font-medium text-slate-700">
+              {usage.queries} of {usage.limit}
+            </span>{' '}
+            research queries used today
+          </p>
+        )}
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate" title={user?.email}>
+            {user?.email}
+          </span>
+          <button type="button" onClick={onLogout} className="inline-flex items-center gap-1 hover:text-slate-700">
+            <LogOut size={13} /> Sign out
+          </button>
+        </div>
       </div>
     </aside>
   );

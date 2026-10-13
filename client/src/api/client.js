@@ -1,18 +1,59 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const TOKEN_KEY = 'ra_token';
 
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  // The agent can take a while (retrieval + a live web search + LLM
-  // synthesis) -- give it room rather than timing out a legitimate run.
-  timeout: 120000,
+export function getToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setToken(token) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* storage unavailable: the session just won't persist */
+  }
+}
+
+const api = axios.create({ baseURL: API_BASE_URL, timeout: 20000 });
+
+api.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
 });
 
-/** Submit a new research query. Returns the saved ResearchReport. */
-export async function submitQuery(query) {
-  const { data } = await api.post('/query', { query });
+// Lets AuthContext sign the user out when any call comes back 401.
+let onUnauthorized = () => {};
+export function setUnauthorizedHandler(handler) {
+  onUnauthorized = handler;
+}
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401 && err.response.data?.code === 'UNAUTHORIZED') onUnauthorized();
+    return Promise.reject(err);
+  }
+);
+
+export async function register(email, password) {
+  const { data } = await api.post('/auth/register', { email, password });
+  return data; // { token, user }
+}
+
+export async function login(email, password) {
+  const { data } = await api.post('/auth/login', { email, password });
   return data;
+}
+
+export async function fetchMe() {
+  const { data } = await api.get('/auth/me');
+  return data; // { user, usage: { queries, limit } }
 }
 
 /**
@@ -27,6 +68,12 @@ export async function fetchHistory(params = {}) {
 /** Fetch a single full report (including intermediate_steps). */
 export async function fetchReport(id) {
   const { data } = await api.get(`/history/${id}`);
+  return data;
+}
+
+/** Fetch a whole conversation thread: { session, reports }. */
+export async function fetchSession(id) {
+  const { data } = await api.get(`/sessions/${id}`);
   return data;
 }
 
