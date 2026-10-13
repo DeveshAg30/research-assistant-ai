@@ -1,85 +1,38 @@
-const axios = require('axios');
 const mongoose = require('mongoose');
 const asyncHandler = require('express-async-handler');
 const ResearchReport = require('../models/ResearchReport');
+const ResearchSession = require('../models/ResearchSession');
+const HttpError = require('../utils/httpError');
 
-const RAW_AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-// Render's private-network reference (fromService.hostport) is a bare
-// "host:port", so default to http:// when no scheme is given.
-const AI_SERVICE_URL = /^https?:\/\//.test(RAW_AI_SERVICE_URL)
-  ? RAW_AI_SERVICE_URL
-  : `http://${RAW_AI_SERVICE_URL}`;
-// The agent can genuinely take a while (retrieval + possibly a live web
-// search + LLM synthesis), so give it a generous timeout rather than
-// failing fast on a slow-but-successful run.
-const AI_SERVICE_TIMEOUT_MS = Number(process.env.AI_SERVICE_TIMEOUT_MS || 120000);
+const { VERIFICATION_STATUSES } = ResearchReport;
 
-/**
- * POST /api/query
- * Forwards the query to the Python AI microservice, persists the full
- * result (or the failure) to MongoDB, and returns the saved record.
- */
-const submitQuery = asyncHandler(async (req, res) => {
-  const { query } = req.body;
-
-  if (!query || typeof query !== 'string' || !query.trim()) {
-    res.status(400);
-    throw new Error('Request body must include a non-empty "query" string.');
+function assertObjectId(id, what = 'report') {
+  if (!mongoose.isValidObjectId(id)) {
+    throw new HttpError(400, 'VALIDATION', `Invalid ${what} id.`);
   }
+}
 
-  let aiResponse;
-  try {
-    const { data } = await axios.post(
-      `${AI_SERVICE_URL}/api/research`,
-      { query: query.trim() },
-      { timeout: AI_SERVICE_TIMEOUT_MS }
-    );
-    aiResponse = data;
-  } catch (err) {
-    const detail =
-      err.response?.data?.detail || err.message || 'Unknown AI service error';
-
-    // Persist the failure too, so it shows up in history instead of
-    // silently vanishing -- useful for debugging and for the user to retry.
-    const failedReport = await ResearchReport.create({
-      query: query.trim(),
-      status: 'failed',
-      error_message: String(detail),
-    });
-
-    res.status(err.response ? 502 : 504);
-    return res.json({
-      error: 'AI service request failed.',
-      detail,
-      reportId: failedReport._id,
-    });
-  }
-
-  const report = await ResearchReport.create({
-    query: query.trim(),
-    output: aiResponse.output,
-    verification_status: aiResponse.verification_status,
-    tools_used: aiResponse.tools_used,
-    internal_sources: aiResponse.internal_sources,
-    web_sources: aiResponse.web_sources,
-    intermediate_steps: aiResponse.intermediate_steps,
-    status: 'completed',
-  });
-
-  res.status(201).json(report);
-});
+async function findOwnedReport(id, userId) {
+  assertObjectId(id);
+  const report = await ResearchReport.findOne({ _id: id, user: userId });
+  if (!report) throw new HttpError(404, 'NOT_FOUND', 'Research report not found.');
+  return report;
+}
 
 /**
  * GET /api/history?page=1&limit=10&status=CONFIRMED&search=polar+bears&bookmarked=true
+ * status: ALL | one of VERIFICATION_STATUSES | FAILED (failed or cancelled runs)
  */
 const getHistory = asyncHandler(async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 10));
   const { status, search, bookmarked } = req.query;
 
-  const filter = {};
+  const filter = { user: req.user.id };
 
-  if (status && status !== 'ALL') {
+  if (status === 'FAILED') {
+    filter.status = { $in: ['failed', 'cancelled'] };
+  } else if (VERIFICATION_STATUSES.includes(status)) {
     filter.verification_status = status;
   }
 
@@ -87,13 +40,13 @@ const getHistory = asyncHandler(async (req, res) => {
     filter.is_bookmarked = true;
   }
 
-  if (search && search.trim()) {
+  if (typeof search === 'string' && search.trim()) {
     filter.$text = { $search: search.trim() };
   }
 
   const [items, total] = await Promise.all([
     ResearchReport.find(filter)
-      .select('-intermediate_steps') // list view doesn't need the full trace
+      .select('-intermediate_steps -internal_sources -web_sources -output') // list view only
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit),
@@ -111,55 +64,33 @@ const getHistory = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * GET /api/history/:id
- */
+/** GET /api/history/:id */
 const getReportById = asyncHandler(async (req, res) => {
-  const { id } = req.params;
+  res.json(await findOwnedReport(req.params.id, req.user.id));
+});
 
-  if (!mongoose.isValidObjectId(id)) {
-    res.status(400);
-    throw new Error('Invalid report id.');
-  }
-
-  const report = await ResearchReport.findById(id);
-
-  if (!report) {
-    res.status(404);
-    throw new Error('Research report not found.');
-  }
-
+/** PATCH /api/history/:id/bookmark -- toggles is_bookmarked. */
+const toggleBookmark = asyncHandler(async (req, res) => {
+  const report = await findOwnedReport(req.params.id, req.user.id);
+  report.is_bookmarked = !report.is_bookmarked;
+  await report.save();
   res.json(report);
 });
 
-/**
- * PATCH /api/history/:id/bookmark
- * Toggles is_bookmarked.
- */
-const toggleBookmark = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  if (!mongoose.isValidObjectId(id)) {
-    res.status(400);
-    throw new Error('Invalid report id.');
-  }
-
-  const report = await ResearchReport.findById(id);
-
-  if (!report) {
-    res.status(404);
-    throw new Error('Research report not found.');
-  }
-
-  report.is_bookmarked = !report.is_bookmarked;
-  await report.save();
-
-  res.json(report);
+/** GET /api/sessions/:id -- the whole thread, oldest first. */
+const getSession = asyncHandler(async (req, res) => {
+  assertObjectId(req.params.id, 'session');
+  const session = await ResearchSession.findOne({ _id: req.params.id, user: req.user.id });
+  if (!session) throw new HttpError(404, 'NOT_FOUND', 'Research session not found.');
+  const reports = await ResearchReport.find({ session: session._id, user: req.user.id }).sort({
+    createdAt: 1,
+  });
+  res.json({ session, reports });
 });
 
 module.exports = {
-  submitQuery,
   getHistory,
   getReportById,
   toggleBookmark,
+  getSession,
 };
