@@ -19,8 +19,14 @@ services:
         sync: false
       - key: TAVILY_API_KEY
         sync: false
+      # Generated here; the server reads it via fromService below.
+      - key: AI_SERVICE_TOKEN
+        generateValue: true
+      # Stratified sample across all organisations; "0" indexes all 118k rows.
       - key: MAX_INGEST_ROWS
-        value: "2000"
+        value: "20000"
+      - key: AGENT_TIMEOUT_S
+        value: "110"
       - key: CHROMA_PERSIST_DIR
         value: /app/chroma_factors_db
 
@@ -46,6 +52,21 @@ services:
           property: hostport
       - key: AI_SERVICE_TIMEOUT_MS
         value: "120000"
+      - key: AI_SERVICE_TOKEN
+        fromService:
+          type: pserv
+          name: research-ai
+          envVarKey: AI_SERVICE_TOKEN
+      - key: JWT_SECRET
+        generateValue: true
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DAILY_QUERY_LIMIT
+        value: "50"
+      - key: DAILY_GLOBAL_QUERY_LIMIT
+        value: "2000"
+      - key: METRICS_TOKEN
+        generateValue: true
       # The Vercel URL of the client, e.g. https://research-assistant.vercel.app
       - key: CLIENT_ORIGIN
         sync: false
