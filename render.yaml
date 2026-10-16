@@ -1,35 +1,7 @@
 # Render Blueprint: Dashboard -> New -> Blueprint -> pick this repo.
-# The React client is deployed separately on Vercel (see README).
+# Free setup: the React client is on Vercel and the Python AI service is a
+# Hugging Face Space (see ai-service/README.md); only the Express server is here.
 services:
-  # Python agent. A private service has no public URL -- only the Express
-  # server can reach it, over Render's private network.
-  - type: pserv
-    name: research-ai
-    runtime: docker
-    dockerfilePath: ./ai-service/Dockerfile
-    dockerContext: ./ai-service
-    # PyTorch + the embedding model need ~1-1.5 GB; 512 MB plans OOM.
-    plan: 1c-2g
-    disk:
-      name: chroma
-      mountPath: /app/chroma_factors_db
-      sizeGB: 1
-    envVars:
-      - key: GOOGLE_API_KEY
-        sync: false
-      - key: TAVILY_API_KEY
-        sync: false
-      # Generated here; the server reads it via fromService below.
-      - key: AI_SERVICE_TOKEN
-        generateValue: true
-      # Stratified sample across all organisations; "0" indexes all 118k rows.
-      - key: MAX_INGEST_ROWS
-        value: "20000"
-      - key: AGENT_TIMEOUT_S
-        value: "110"
-      - key: CHROMA_PERSIST_DIR
-        value: /app/chroma_factors_db
-
   # Express API, public. Free instances sleep after ~15 min idle
   # (first request afterwards takes ~1 min to wake).
   - type: web
@@ -45,18 +17,14 @@ services:
         value: production
       - key: MONGODB_URI
         sync: false
+      # The Space URL, e.g. https://<hf-user>-research-ai.hf.space
       - key: AI_SERVICE_URL
-        fromService:
-          type: pserv
-          name: research-ai
-          property: hostport
+        sync: false
       - key: AI_SERVICE_TIMEOUT_MS
         value: "120000"
+      # Same value as the AI_SERVICE_TOKEN secret on the Space.
       - key: AI_SERVICE_TOKEN
-        fromService:
-          type: pserv
-          name: research-ai
-          envVarKey: AI_SERVICE_TOKEN
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: TRUST_PROXY
