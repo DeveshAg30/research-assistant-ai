@@ -1,0 +1,29 @@
+# Slim image for a 512 MB instance (Render free plan): ONNX embeddings and no
+# reranker, so no torch / sentence-transformers. Free instances have no
+# persistent disk, so the index ships in the image. Rebuild it after changing
+# the dataset, schema or embedding model with:
+#   EMBEDDING_PROVIDER=onnx CHROMA_PERSIST_DIR=./prebuilt_index python ingest.py --rows 10000
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# requirements.txt is a complete lockfile, so --no-deps can safely leave out
+# the packages that exist only for local embeddings and reranking.
+COPY requirements.txt .
+RUN grep -vE '^(torch|sentence-transformers|transformers|langchain-huggingface)==' requirements.txt > requirements-slim.txt \
+    && pip install --no-cache-dir --no-deps -r requirements-slim.txt
+
+# Bake the ONNX model into the image so startup doesn't download it.
+RUN python -c "from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2; ONNXMiniLM_L6_V2()(['warm-up'])"
+
+COPY . .
+
+ENV EMBEDDING_PROVIDER=onnx \
+    RERANKER_MODEL=none \
+    CHROMA_PERSIST_DIR=/app/prebuilt_index \
+    MAX_INGEST_ROWS=10000
+
+EXPOSE 8000
+
+# Render sets $PORT for web services.
+CMD uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}

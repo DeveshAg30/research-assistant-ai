@@ -42,7 +42,15 @@ GITHUB_CSV_FALLBACK_URL = (
 
 # Bump whenever the document text, metadata fields, or ID scheme change.
 INDEX_SCHEMA_VERSION = 2
-EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+# "local": sentence-transformers (needs torch, ~1.5 GB RAM).
+# "onnx": the same MiniLM model through Chroma's bundled ONNX runtime -- no
+# torch, so it fits a 512 MB instance. Its vectors differ slightly, hence its
+# own name (switching providers rebuilds the index).
+EMBEDDING_PROVIDER = os.environ.get("EMBEDDING_PROVIDER", "local").lower()
+EMBEDDING_MODEL = os.environ.get(
+    "EMBEDDING_MODEL",
+    "onnx-all-MiniLM-L6-v2" if EMBEDDING_PROVIDER == "onnx" else "all-MiniLM-L6-v2",
+)
 
 PERSIST_DIR = os.environ.get("CHROMA_PERSIST_DIR", "./chroma_factors_db")
 COLLECTION_NAME = f"factors_v{INDEX_SCHEMA_VERSION}"
@@ -234,6 +242,45 @@ def _write_manifest(persist_dir: str, documents: list, chunk_count: int, target_
 # Vector store
 # ---------------------------------------------------------------------------
 
+class OnnxMiniLMEmbeddings:
+    """LangChain Embeddings adapter for Chroma's ONNX all-MiniLM-L6-v2."""
+
+    def __init__(self):
+        import onnxruntime as ort
+        from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
+
+        self._fn = ONNXMiniLM_L6_V2()
+        self._fn._download_model_if_not_exists()
+        # Chroma's default session keeps ~200 MB of arena buffers after the
+        # first call; without the arena a query costs ~15 MB. Pre-seeding the
+        # cached `model` property swaps in this leaner session.
+        so = ort.SessionOptions()
+        so.log_severity_level = 3
+        so.enable_cpu_mem_arena = False
+        so.enable_mem_pattern = False
+        self._fn.__dict__["model"] = ort.InferenceSession(
+            os.path.join(self._fn.DOWNLOAD_PATH, self._fn.EXTRACTED_FOLDER_NAME, "model.onnx"),
+            providers=["CPUExecutionProvider"],
+            sess_options=so,
+        )
+
+    def embed_documents(self, texts):
+        return [vector.tolist() for vector in self._fn(list(texts))]
+
+    def embed_query(self, text):
+        return self.embed_documents([text])[0]
+
+
+def build_embeddings():
+    if EMBEDDING_PROVIDER == "onnx":
+        return OnnxMiniLMEmbeddings()
+    from langchain_huggingface import HuggingFaceEmbeddings
+
+    from retrieval import MODEL_DEVICE
+
+    return HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL, model_kwargs={"device": MODEL_DEVICE})
+
+
 def open_vectorstore(embeddings, persist_dir: str = PERSIST_DIR):
     from langchain_chroma import Chroma
 
@@ -264,6 +311,10 @@ def run(
         previous.get("target_rows") != target_rows
     ):
         print("[ingestion] Row target changed since last build; rebuilding.")
+        rebuild = True
+    # Vectors from another model are not comparable (and may differ in size).
+    if previous and previous.get("embedding_model") != EMBEDDING_MODEL:
+        print("[ingestion] Embedding model changed since last build; rebuilding.")
         rebuild = True
     if rebuild:
         vectorstore.delete_collection()
@@ -329,12 +380,7 @@ def _main():
                         help="Delete the collection and build from scratch.")
     args = parser.parse_args()
 
-    from langchain_huggingface import HuggingFaceEmbeddings
-
-    from retrieval import MODEL_DEVICE
-
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL, model_kwargs={"device": MODEL_DEVICE})
-    run(embeddings, max_rows=args.rows, refresh=args.refresh, rebuild=args.rebuild)
+    run(build_embeddings(), max_rows=args.rows, refresh=args.refresh, rebuild=args.rebuild)
 
 
 if __name__ == "__main__":

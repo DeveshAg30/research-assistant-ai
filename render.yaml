@@ -1,7 +1,29 @@
 # Render Blueprint: Dashboard -> New -> Blueprint -> pick this repo.
-# Free setup: the React client is on Vercel and the Python AI service is a
-# Hugging Face Space (see ai-service/README.md); only the Express server is here.
+# Everything here is on the free plan; the React client is deployed
+# separately on Vercel (see README).
 services:
+  # Python agent. The slim image (ONNX embeddings, no reranker, index built
+  # into the image) fits the free plan's 512 MB. Free instances can't use
+  # Render's private network, so it is public, but the research endpoint
+  # requires AI_SERVICE_TOKEN.
+  - type: web
+    name: research-ai
+    runtime: docker
+    dockerfilePath: ./ai-service/Dockerfile.slim
+    dockerContext: ./ai-service
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      # Generated here; the server reads it via fromService below.
+      - key: AI_SERVICE_TOKEN
+        generateValue: true
+      - key: AGENT_TIMEOUT_S
+        value: "110"
+
   # Express API, public. Free instances sleep after ~15 min idle
   # (first request afterwards takes ~1 min to wake).
   - type: web
@@ -17,14 +39,16 @@ services:
         value: production
       - key: MONGODB_URI
         sync: false
-      # The Space URL, e.g. https://<hf-user>-research-ai.hf.space
+      # research-ai's public URL, e.g. https://research-ai.onrender.com
       - key: AI_SERVICE_URL
         sync: false
       - key: AI_SERVICE_TIMEOUT_MS
         value: "120000"
-      # Same value as the AI_SERVICE_TOKEN secret on the Space.
       - key: AI_SERVICE_TOKEN
-        sync: false
+        fromService:
+          type: web
+          name: research-ai
+          envVarKey: AI_SERVICE_TOKEN
       - key: JWT_SECRET
         generateValue: true
       - key: TRUST_PROXY

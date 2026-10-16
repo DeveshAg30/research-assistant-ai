@@ -30,7 +30,7 @@ from langchain_core.tools import tool
 
 import ingest
 from parsing import internal_source_id, sanitize_untrusted, web_source_id
-from retrieval import MODEL_DEVICE, HybridRetriever, build_reranker
+from retrieval import HybridRetriever, build_reranker
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
 AGENT_TIMEOUT_S = float(os.environ.get("AGENT_TIMEOUT_S", "110"))
@@ -303,16 +303,12 @@ def build_executor(llm, tools) -> AgentExecutor:
 def build_runtime() -> AgentRuntime:
     """Load (or build) the index, the retriever, the tools and the agent."""
     from langchain_google_genai import ChatGoogleGenerativeAI
-    from langchain_huggingface import HuggingFaceEmbeddings
 
     # temperature / top_p / top_k intentionally omitted: deprecated for all
     # Gemini 3.x models per Google's migration guidance.
     llm = ChatGoogleGenerativeAI(model=GEMINI_MODEL)
 
-    embeddings = HuggingFaceEmbeddings(
-        model_name=ingest.EMBEDDING_MODEL, model_kwargs={"device": MODEL_DEVICE}
-    )
-    vectorstore, manifest = ingest.load_or_build(embeddings)
+    vectorstore, manifest = ingest.load_or_build(ingest.build_embeddings())
     retriever = HybridRetriever(vectorstore, reranker=build_reranker())
 
     tools = [

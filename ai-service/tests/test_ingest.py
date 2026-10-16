@@ -68,3 +68,13 @@ def test_changed_row_target_rebuilds(tmp_path, emb):
     ingest.run(emb, max_rows=10, persist_dir=str(tmp_path), dataframe=df)
     vs, manifest = ingest.run(emb, max_rows=5, persist_dir=str(tmp_path), dataframe=df)
     assert vs._collection.count() == 5 and manifest["target_rows"] == 5
+
+
+def test_changed_embedding_model_rebuilds(tmp_path, emb, monkeypatch):
+    df = tiny_factors_df()
+    ingest.run(emb, max_rows=10, persist_dir=str(tmp_path), dataframe=df)
+    monkeypatch.setattr(ingest, "EMBEDDING_MODEL", "other-model")
+    # A different vector size would raise if the old collection were reused.
+    vs, manifest = ingest.run(DeterministicFakeEmbedding(size=16), max_rows=10,
+                              persist_dir=str(tmp_path), dataframe=df)
+    assert vs._collection.count() == 10 and manifest["embedding_model"] == "other-model"
