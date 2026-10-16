@@ -76,7 +76,9 @@ research-assistant-mern/
 - Node.js 20.3+
 - A running MongoDB instance (local `mongod`, Docker, or Atlas)
 - A Google AI Studio API key (`GOOGLE_API_KEY`), required
-- A Tavily API key (`TAVILY_API_KEY`), optional; without it, search falls back to DuckDuckGo
+- A Tavily API key (`TAVILY_API_KEY`), optional but recommended. Without it, web search
+  falls back to DuckDuckGo via the `ddgs` package, which returns shorter, lower-quality
+  snippets
 
 ## 3. Setup & Startup (running each service directly)
 
@@ -124,9 +126,21 @@ npm run dev
 
 Confirm it's up at `http://localhost:5000/api/health`.
 
-**Upgrading from the pre-auth version:** existing reports have no owner and
-won't appear in anyone's history. Register an account, then run
-`node scripts/assignOrphans.js --email you@example.com`.
+The server refuses to start without a `JWT_SECRET` of at least 32
+characters. To generate one, run `openssl rand -hex 48`.
+
+**Upgrading from the pre-auth version:**
+
+- **New settings:** add `JWT_SECRET` to `server/.env`, and set the same
+  `AI_SERVICE_TOKEN` in both `server/.env` and `ai-service/.env`.
+- **Index size:** remove `MAX_INGEST_ROWS` from `ai-service/.env` or set it
+  to `20000`. Any other value triggers an index rebuild on startup.
+- **Python dependencies:** re-run `pip install -r requirements.txt`. The
+  DuckDuckGo fallback now uses `ddgs`; the old `duckduckgo_search` package
+  returns no results.
+- **Existing reports:** they have no owner and won't appear in anyone's
+  history. Register an account, then run
+  `node scripts/assignOrphans.js --email you@example.com`.
 
 ### React frontend
 
@@ -216,4 +230,15 @@ cd client && npm test            # Vitest + Testing Library
 CI (`.github/workflows/ci.yml`) runs all three suites and the client build
 on every push and pull request. Dependabot proposes weekly dependency
 updates. To update the pinned Python deps, edit `requirements.in`, then
-run `pip-compile --strip-extras requirements.in -o requirements.txt`.
+run `pip-compile --no-emit-index-url --strip-extras requirements.in -o requirements.txt`.
+
+## 9. Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| Server exits with `JWT_SECRET must be set…` | Add a 32+ character `JWT_SECRET` to `server/.env` (e.g. `openssl rand -hex 48`). |
+| Every query fails with "service unavailable" | The AI service is still starting (check `/health`), or `AI_SERVICE_TOKEN` differs between the two `.env` files. |
+| Every web search step says "No web results found." | No `TAVILY_API_KEY` and an outdated venv still using `duckduckgo_search`. Run `pip install -r requirements.txt`, or set a Tavily key. |
+| The AI service rebuilds the index on every start | `MAX_INGEST_ROWS` doesn't match the built index, or the previous build was interrupted (it resumes). |
+| Old reports are missing from history | Run `scripts/assignOrphans.js` (see above). |
+| The AI service crashes with a segfault on macOS | Keep `MODEL_DEVICE=cpu`; Apple's MPS backend can crash under parallel tool calls. |
