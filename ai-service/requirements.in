@@ -3,8 +3,8 @@
 # Dependabot (.github/dependabot.yml) proposes weekly bumps.
 
 # --- Core LangChain (v1: AgentExecutor lives in langchain-classic) ---
-langchain>=1.0.0
-langchain-core>=1.0.0
+langchain>=1.4.6
+langchain-core>=1.6.12
 langchain-community>=0.4.0
 langchain-classic>=1.0.0
 langchain-text-splitters>=1.0.0
