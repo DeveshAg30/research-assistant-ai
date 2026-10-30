@@ -27,7 +27,7 @@ pandas>=2.0.0
 
 # --- Web search ---
 tavily-python>=0.5.0
-ddgs>=9.16.0
+ddgs>=9.16.1
 
 # --- Wikipedia lookup ---
 wikipedia>=1.4.0
