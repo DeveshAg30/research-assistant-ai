@@ -14,7 +14,7 @@ langchain-google-genai>=3.0.0
 
 # --- Local embeddings + cross-encoder reranker ---
 langchain-huggingface>=1.0.0
-sentence-transformers>=3.0.0
+sentence-transformers>=6.2.0
 
 # --- Vector store + keyword search ---
 langchain-chroma>=0.2.0
