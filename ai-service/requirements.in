@@ -3,14 +3,14 @@
 # Dependabot (.github/dependabot.yml) proposes weekly bumps.
 
 # --- Core LangChain (v1: AgentExecutor lives in langchain-classic) ---
-langchain>=1.0.0
+langchain>=1.4.9
 langchain-core>=1.0.0
 langchain-community>=0.4.0
 langchain-classic>=1.0.0
 langchain-text-splitters>=1.0.0
 
 # --- Gemini LLM ---
-langchain-google-genai>=3.0.0
+langchain-google-genai>=4.4.3
 
 # --- Local embeddings + cross-encoder reranker ---
 langchain-huggingface>=1.0.0
